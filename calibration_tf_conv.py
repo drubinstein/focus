@@ -11,7 +11,7 @@ import tensorflow as tf
 
 from six.moves import cPickle
 
-printing=False
+printing=True
 
 def calibrate(sess, optimizer, cam, dur, n_input, X, Y, x, y):
     #capture for 5 seconds
@@ -46,24 +46,26 @@ def mlp(x, weights, biases, dropout, w, h):
     conv1 = conv2d(x, weights['wc1'], biases['bc1'])
     #Max pooling (down-sampling)
     conv1 = maxpool2d(conv1, k=2)
-    if printing: conv1 = tf.Print(conv1, [conv1], 'conv1: ')
+    if printing: conv1 = tf.Print(conv1, [conv1], 'conv1: ', summarize=10)
 
     #Convolution layer
     conv2 = conv2d(conv1, weights['wc2'], biases['bc2'])
     #Max pooling (down-sampling)
     conv2 = maxpool2d(conv2, k=2)
-    if printing: conv1 = tf.Print(conv2, [conv2], 'conv1: ')
+    if printing: conv2 = tf.Print(conv2, [conv2], 'conv2: ', summarize=10)
 
     #Fully connected layer
     #Reshape conv2 output to fit fully connected layer input
     fc1 = tf.reshape(conv2, [-1, weights['wd1'].get_shape().as_list()[0]])
     fc1 = tf.add(tf.matmul(fc1, weights['wd1']), biases['bd1'])
-    fc1 = tf.nn.relu(fc1)
     #Apply dropout
+    fc1 = tf.nn.relu(fc1)
     fc1 = tf.nn.dropout(fc1, dropout)
+    if printing: fc1 = tf.Print(fc1, [fc1], 'fc1: ', summarize=10)
 
     #Output, class prediction
     out = tf.add(tf.matmul(fc1, weights['out']), biases['out'])
+    if printing: out = tf.Print(out, [out], 'out: ')
     return out
 
 def main():
@@ -88,8 +90,8 @@ def main():
     print "Frame dims are '{0}' x '{1}'".format(frame_w,frame_h)
 
     print('Initializing neural net')
-    learning_rate = 0.001
-    dropout = .85
+    learning_rate = 0.0001
+    dropout = .75
     n_input = npxls
     n_out = 2
     X = tf.placeholder(tf.float32, [None, frame_h*frame_w])
@@ -117,8 +119,12 @@ def main():
     pred = mlp(X, weights, biases, dropout, frame_w, frame_h)
 
     #define cost function
-    cost = tf.reduce_sum(tf.pow(pred-Y,2))/2
+    cost = tf.sqrt(tf.reduce_sum(tf.pow(pred-Y,2))/2)
+    if printing: cost = tf.Print(cost,[cost],'cost: ')
+
     optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
+    #if printing: optimizer = tf.Print(optimizer,[optimizer],'optimizer: ')
+
     init = tf.initialize_all_variables()
 
     with tf.Session() as sess:

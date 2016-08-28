@@ -33,17 +33,17 @@ def calibrate(sess, optimizer, cam, dur, n_input, X, Y, x, y):
 
 def mlp(x, weights, biases, dropout):
     #Hidden Layer with tanh activation
-    layer_1 = tf.tanh(tf.add(tf.matmul(x, weights['h1']), biases['b1']))
+    layer_1 = tf.add(tf.matmul(x, weights['h1']), biases['b1'])
     layer_1 = tf.nn.relu(layer_1)
     layer_1 = tf.nn.dropout(layer_1, dropout)
     if printing: layer_1 = tf.Print(layer_1, [layer_1], 'layer 1: ', summarize=NUM_HIDDEN_UNITS)
     #Hidden Layer with RELU activation
-    layer_2 = tf.tanh(tf.add(tf.matmul(layer_1, weights['h2']), biases['b2']))
+    layer_2 = tf.add(tf.matmul(layer_1, weights['h2']), biases['b2'])
     layer_2 = tf.nn.relu(layer_2)
     layer_2 = tf.nn.dropout(layer_2, dropout)
     if printing: layer_2 = tf.Print(layer_2, [layer_2], 'layer 2: ', summarize=NUM_HIDDEN_UNITS)
     #layer 3
-    layer_3 = tf.tanh(tf.add(tf.matmul(layer_1, weights['h3']), biases['b3']))
+    layer_3 = tf.add(tf.matmul(layer_1, weights['h3']), biases['b3'])
     layer_3 = tf.nn.relu(layer_3)
     layer_3 = tf.nn.dropout(layer_3, dropout)
     if printing: layer_2 = tf.Print(layer_3, [layer_3], 'layer 3: ', summarize=NUM_HIDDEN_UNITS)
@@ -74,8 +74,8 @@ def main():
     print "Frame dims are '{0}' x '{1}'".format(frame_w,frame_h)
 
     print('Initializing neural net')
-    learning_rate = 0.001
-    dropout = .85
+    learning_rate = 0.0001
+    dropout = .75
     n_input = npxls
     n_hidden_1 = NUM_HIDDEN_UNITS
     n_hidden_2 = NUM_HIDDEN_UNITS
@@ -101,7 +101,7 @@ def main():
     pred = mlp(X,weights, biases, dropout)
 
     #define cost function
-    cost = tf.reduce_sum(tf.pow(pred-Y,2))/2
+    cost = tf.sqrt(tf.reduce_sum(tf.pow(pred-Y,2))/2)
     optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
     init = tf.initialize_all_variables()
 
