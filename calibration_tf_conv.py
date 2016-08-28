@@ -1,4 +1,5 @@
 #file calibration.py
+#calibration with a convolutional neural net
 import os
 import cv2
 import numpy as np
@@ -6,14 +7,10 @@ import Tkinter as tk
 import time
 from random import randint
 
-import matplotlib.pyplot as pyplot
 import tensorflow as tf
-
 
 from six.moves import cPickle
 
-NUM_HIDDEN_UNITS=200
-BATCH_SIZE=1
 printing=False
 
 def calibrate(sess, optimizer, cam, dur, n_input, X, Y, x, y):
@@ -31,26 +28,43 @@ def calibrate(sess, optimizer, cam, dur, n_input, X, Y, x, y):
         #Now go train!
         sess.run(optimizer, feed_dict={X: gray_rs, Y: [[x,y]]})
 
-def mlp(x, weights, biases, dropout):
-    #Hidden Layer with tanh activation
-    layer_1 = tf.tanh(tf.add(tf.matmul(x, weights['h1']), biases['b1']))
-    layer_1 = tf.nn.relu(layer_1)
-    layer_1 = tf.nn.dropout(layer_1, dropout)
-    if printing: layer_1 = tf.Print(layer_1, [layer_1], 'layer 1: ', summarize=NUM_HIDDEN_UNITS)
-    #Hidden Layer with RELU activation
-    layer_2 = tf.tanh(tf.add(tf.matmul(layer_1, weights['h2']), biases['b2']))
-    layer_2 = tf.nn.relu(layer_2)
-    layer_2 = tf.nn.dropout(layer_2, dropout)
-    if printing: layer_2 = tf.Print(layer_2, [layer_2], 'layer 2: ', summarize=NUM_HIDDEN_UNITS)
-    #layer 3
-    layer_3 = tf.tanh(tf.add(tf.matmul(layer_1, weights['h3']), biases['b3']))
-    layer_3 = tf.nn.relu(layer_3)
-    layer_3 = tf.nn.dropout(layer_3, dropout)
-    if printing: layer_2 = tf.Print(layer_3, [layer_3], 'layer 3: ', summarize=NUM_HIDDEN_UNITS)
-    #Output layer
-    out_layer = tf.matmul(layer_2, weights['out']) + biases['out']
-    if printing: out_layer = tf.Print(out_layer,[out_layer], 'output layer: ')
-    return out_layer
+def conv2d(x, W, b, strides=1):
+    # Conv2D wrapper, with bias and relu activation
+    x = tf.nn.conv2d(x, W, strides=[1, strides, strides, 1], padding='SAME')
+    x = tf.nn.bias_add(x, b)
+    return tf.nn.relu(x)
+
+def maxpool2d(x, k=2):
+   return tf.nn.max_pool(x, ksize=[1, k, k, 1], strides=[1, k, k, 1],
+        padding='SAME')
+
+def mlp(x, weights, biases, dropout, w, h):
+    #Resahpe for convolution layer
+    x = tf.reshape(x, shape=[-1, h, w, 1])
+
+    #Convolution layer
+    conv1 = conv2d(x, weights['wc1'], biases['bc1'])
+    #Max pooling (down-sampling)
+    conv1 = maxpool2d(conv1, k=2)
+    if printing: conv1 = tf.Print(conv1, [conv1], 'conv1: ')
+
+    #Convolution layer
+    conv2 = conv2d(conv1, weights['wc2'], biases['bc2'])
+    #Max pooling (down-sampling)
+    conv2 = maxpool2d(conv2, k=2)
+    if printing: conv1 = tf.Print(conv2, [conv2], 'conv1: ')
+
+    #Fully connected layer
+    #Reshape conv2 output to fit fully connected layer input
+    fc1 = tf.reshape(conv2, [-1, weights['wd1'].get_shape().as_list()[0]])
+    fc1 = tf.add(tf.matmul(fc1, weights['wd1']), biases['bd1'])
+    fc1 = tf.nn.relu(fc1)
+    #Apply dropout
+    fc1 = tf.nn.dropout(fc1, dropout)
+
+    #Output, class prediction
+    out = tf.add(tf.matmul(fc1, weights['out']), biases['out'])
+    return out
 
 def main():
     root = tk.Tk()
@@ -77,28 +91,30 @@ def main():
     learning_rate = 0.001
     dropout = .85
     n_input = npxls
-    n_hidden_1 = NUM_HIDDEN_UNITS
-    n_hidden_2 = NUM_HIDDEN_UNITS
-    n_hidden_3 = NUM_HIDDEN_UNITS
     n_out = 2
     X = tf.placeholder(tf.float32, [None, frame_h*frame_w])
     Y = tf.placeholder(tf.float32, [None, n_out])
     # Store layers weight & bias
     weights = {
-        'h1': tf.Variable(tf.random_normal([n_input, n_hidden_1])),
-        'h2': tf.Variable(tf.random_normal([n_hidden_1, n_hidden_2])),
-        'h3': tf.Variable(tf.random_normal([n_hidden_2, n_hidden_3])),
-        'out': tf.Variable(tf.random_normal([n_hidden_3, n_out]))
-        }
+        # 5x5 conv, 1 input, 32 outputs
+        'wc1': tf.Variable(tf.random_normal([5, 5, 1, 32])),
+        # 5x5 conv, 32 inputs, 64 outputs
+        'wc2': tf.Variable(tf.random_normal([5, 5, 32, 64])),
+        # fully connected, 7*7*64 inputs, 1024 outputs
+        'wd1': tf.Variable(tf.random_normal([8*8*64, 1024])),
+        # 1024 inputs, 10 outputs (class prediction)
+        'out': tf.Variable(tf.random_normal([1024, n_out]))
+    }
+
     biases = {
-        'b1': tf.Variable(tf.random_normal([n_hidden_1])),
-        'b2': tf.Variable(tf.random_normal([n_hidden_2])),
-        'b3': tf.Variable(tf.random_normal([n_hidden_3])),
+        'bc1': tf.Variable(tf.random_normal([32])),
+        'bc2': tf.Variable(tf.random_normal([64])),
+        'bd1': tf.Variable(tf.random_normal([1024])),
         'out': tf.Variable(tf.random_normal([n_out]))
-        }
+    }
 
     #create multilayer perceptron
-    pred = mlp(X,weights, biases, dropout)
+    pred = mlp(X, weights, biases, dropout, frame_w, frame_h)
 
     #define cost function
     cost = tf.reduce_sum(tf.pow(pred-Y,2))/2
