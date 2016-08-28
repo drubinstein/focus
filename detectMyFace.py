@@ -58,10 +58,10 @@ while(True):
 
     y_pred = net1.predict(gray_downsampled_rs)
 
-
     cv2.imshow('GrayFrame',gray_downsampled)
     #Display the resulting frame
-    plot_sample(gray_downsampled_rs,y_pred[0],ax)
+    print y_pred[0]*48+48
+    plot_sample(gray_downsampled,y_pred[0],ax)
     plt.show(block=False)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break

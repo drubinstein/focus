@@ -113,5 +113,5 @@ fig.subplots_adjust(
 
 for i in range(16):
     ax = fig.add_subplot(4, 4, i + 1, xticks=[], yticks=[])
-    plot_sample(X[i], y_pred[i], ax)
+    plot_sample(X[16*i], y_pred[16*i], ax)
 pyplot.show()
