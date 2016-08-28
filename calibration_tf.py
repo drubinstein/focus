@@ -16,14 +16,29 @@ NUM_HIDDEN_UNITS=100
 BATCH_SIZE=1
 printing=False
 
+def calibrate(sess, optimizer, cam, dur, n_input, X, Y, x, y):
+    #capture for 5 seconds
+    t_end = time.time() + dur
+    while time.time() < t_end:
+        ret, frame = cam.read()
+        # Operate on the frame
+        # We're not doing anything special so grayscale should be good enough
+        # Otherwise we'd just take the luminance values from the frame read
+        gray = np.float32(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
+        gray_rs = np.reshape(gray,(1,n_input))
+        #gray_sc = np.float32(gray / 255.)
+
+        #Now go train!
+        sess.run(optimizer, feed_dict={X: gray_rs, Y: [[x,y]]})
+
 def mlp(x, weights, biases):
-    #Hidden Layer with RELU activation
+    #Hidden Layer with tanh activation
     layer_1 = tf.tanh(tf.add(tf.matmul(x, weights['h1']), biases['b1']))
     #layer_1 = tf.nn.relu(layer_1)
     if printing: layer_1 = tf.Print(layer_1, [layer_1], 'layer 1: ', summarize=NUM_HIDDEN_UNITS)
     #Hidden Layer with RELU activation
-    layer_2 = tf.tanh(tf.add(tf.matmul(layer_1, weights['h2']), biases['b2']))
-    #layer_2 = tf.nn.relu(layer_2)
+    layer_2 = tf.add(tf.matmul(layer_1, weights['h2']), biases['b2'])
+    layer_2 = tf.nn.relu(layer_2)
     if printing: layer_2 = tf.Print(layer_2, [layer_2], 'layer 2: ', summarize=NUM_HIDDEN_UNITS)
     #Output layer
     out_layer = tf.matmul(layer_2, weights['out']) + biases['out']
@@ -53,7 +68,7 @@ def main():
     print "Frame dims are '{0}' x '{1}'".format(frame_w,frame_h)
 
     print('Initializing neural net')
-    learning_rate = 0.001
+    learning_rate = 0.0001
     n_input = npxls
     n_hidden_1 = NUM_HIDDEN_UNITS
     n_hidden_2 = NUM_HIDDEN_UNITS
@@ -101,19 +116,22 @@ def main():
             cv2.waitKey(100)
 
 
-            #capture for 5 seconds
-            t_end = time.time() + 5
-            while time.time() < t_end:
-                ret, frame = cap.read()
-                # Operate on the frame
-                # We're not doing anything special so grayscale should be good enough
-                # Otherwise we'd just take the luminance values from the frame read
-                gray = np.float32(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
-                gray_rs = np.reshape(gray,(1,n_input))
-                #gray_sc = np.float32(gray / 255.)
+            calibrate(sess, optimizer, cap, 5, n_input, X, Y, x , y)
+        """
+        #alternative calibration
+        for x in xrange(0,screen_width,100):
+            for y in xrange(0,screen_height,100):
+                target = np.array([[np.float32(x), np.float32(y)]])
+                #create a white circle at the randomly selected point
+                img[:] = (0,0,0) # clear
+                cv2.circle(img, (x,y), 10, (255,255,255), -1)
 
-                #Now go train!
-                sess.run(optimizer, feed_dict={X: gray_rs, Y: [[x,y]]})
+                cv2.waitKey(100)
+                cv2.imshow('calibration', img)
+                cv2.waitKey(100)
+
+                calibrate(sess, optimizer, cap, .1,n_input,X,Y,x,y)
+        """
 
 
         print('Now continuing onto testing')
