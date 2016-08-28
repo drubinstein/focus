@@ -100,6 +100,7 @@ def main():
 
         npts = 5
         print "generating '{0}' random points to choose from".format(npts)
+        """
         for _ in xrange(0,npts):
             img[:] = (0,0,0) # clear
 
@@ -119,8 +120,8 @@ def main():
             calibrate(sess, optimizer, cap, 5, n_input, X, Y, x , y)
         """
         #alternative calibration
-        for x in xrange(0,screen_width,100):
-            for y in xrange(0,screen_height,100):
+        for x in xrange(0,screen_width,50):
+            for y in xrange(0,screen_height,50):
                 target = np.array([[np.float32(x), np.float32(y)]])
                 #create a white circle at the randomly selected point
                 img[:] = (0,0,0) # clear
@@ -131,7 +132,6 @@ def main():
                 cv2.waitKey(100)
 
                 calibrate(sess, optimizer, cap, .1,n_input,X,Y,x,y)
-        """
 
 
         print('Now continuing onto testing')
