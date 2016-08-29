@@ -24,18 +24,18 @@ def calibrate(sess, optimizer, cam, dur, n_input, X, Y, x, y):
         # We're not doing anything special so grayscale should be good enough
         # Otherwise we'd just take the luminance values from the frame read
         gray = np.float32(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
-        gray_rs = np.reshape(gray,(1,n_input))
+        gray_rs = np.reshape(gray,(1,n_input)) - 127.5
         #gray_sc = np.float32(gray / 255.)
 
         #Now go train!
-        sess.run(optimizer, feed_dict={X: (gray_rs-127.5)/255., Y: [[x,y]]})
+        sess.run(optimizer, feed_dict={X: gray_rs/255., Y: [[x,y]]})
 
 
-def test(sess, pred, cam, n_input, X, screen_width, screen_height):
+def test(sess, pred, cam, n_input, X, screen_width, screen_height, x, y):
     ret, frame = cam.read()
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    gray_rs = np.reshape(gray,(1,n_input))
-    p = sess.run(pred, feed_dict={X: (gray_rs-127.5)/255.})
+    gray_rs = np.reshape(gray,(1,n_input)) - 127.5
+    p = sess.run(pred, feed_dict={X: gray_rs/255.})
     print x,y
     print p[0][0]*screen_width+screen_width/2., p[0][1]*screen_height+screen_height/2.
 
@@ -147,7 +147,7 @@ def main():
             cv2.waitKey(100)
 
             calibrate(sess, optimizer, cap, 1, n_input, X, Y, x/float(screen_width) , y/float(screen_height))
-            test(sess, pred, cap, n_input, X, screen_width, screen_height)
+            test(sess, pred, cap, n_input, X, screen_width, screen_height,x,y)
         """
         #alternative calibration
         for x in xrange(0,screen_width,100):
@@ -164,7 +164,7 @@ def main():
                 x_tf = (x-screen_width/2.)/screen_width
                 y_tf = (y-screen_height/2.)/screen_height
                 calibrate(sess, optimizer, cap, .1,n_input,X,Y,x_tf,y_tf)
-                test(sess, pred, cap, n_input, X, screen_width, screen_height)
+                test(sess, pred, cap, n_input, X, screen_width, screen_height, x, y)
 
         cv2.destroyWindow('calibration')
         print('Now continuing onto testing')
@@ -180,13 +180,13 @@ def main():
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
             #cut off the left and right sides (cause wide screen is stupid)
-            gray_rs = np.reshape(gray,(1,n_input))
+            gray_rs = np.reshape(gray,(1,n_input)) - 127.5
 
             feed_dict = {X: gray_rs/255.}
             p = sess.run(pred, feed_dict)
-            print p[0][0]*screen_width, p[0][1]*screen_height
+            print p[0][0]*screen_width+screen_width/2, p[0][1]*screen_height+screen_height/2
 
-            p_rnd_x, p_rnd_y = np.int32([p[0][0]*screen_width, p[0][1]*screen_height])
+            p_rnd_x, p_rnd_y = np.int32([p[0][0]*screen_width+screen_width/2, p[0][1]*screen_height+screen_height/2])
             print p_rnd_x, p_rnd_y
 
             cv2.imshow('GrayFrame',gray)
