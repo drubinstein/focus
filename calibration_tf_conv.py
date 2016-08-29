@@ -28,6 +28,14 @@ def calibrate(sess, optimizer, cam, dur, n_input, X, Y, x, y):
         #Now go train!
         sess.run(optimizer, feed_dict={X: gray_rs/255., Y: [[x,y]]})
 
+def test(sess, pred, cam, n_input, X, screen_width, screen_height)
+    ret, frame = cam.read()
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    gray_rs = np.reshape(gray,(1,n_input))
+    p = sess.run(pred, feed_dict={X: (gray_rs-127.5)/255.})
+    print x,y
+    print p[0][0]*screen_width+screen_width/2., p[0][1]*screen_height+screen_height/2.
+
 def conv2d(x, W, b, strides=1):
     # Conv2D wrapper, with bias and relu activation
     x = tf.nn.conv2d(x, W, strides=[1, strides, strides, 1], padding='SAME')
@@ -97,6 +105,7 @@ def main():
     X = tf.placeholder(tf.float32, [None, frame_h*frame_w])
     Y = tf.placeholder(tf.float32, [None, n_out])
     # Store layers weight & bias
+    #TODO: Figure out why output is not 1x2 and instead is 75x2. Must have something to do with wd1
     weights = {
         # 5x5 conv, 1 input, 32 outputs
         'wc1': tf.Variable(tf.random_normal([5, 5, 1, 32])),
