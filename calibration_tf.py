@@ -31,7 +31,7 @@ def calibrate(sess, optimizer, cam, dur, n_input, X, Y, x, y):
         sess.run(optimizer, feed_dict={X: (gray_rs-127.5)/255., Y: [[x,y]]})
 
 
-def test(sess, pred, cam, n_input, X, screen_width, screen_height)
+def test(sess, pred, cam, n_input, X, screen_width, screen_height):
     ret, frame = cam.read()
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     gray_rs = np.reshape(gray,(1,n_input))
