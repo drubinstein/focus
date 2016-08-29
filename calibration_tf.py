@@ -150,6 +150,7 @@ def main():
             test(sess, pred, cap, n_input, X, screen_width, screen_height,x,y)
         """
         #alternative calibration
+        """
         for x in xrange(0,screen_width,100):
             for y in xrange(0,screen_height,100):
                 #create a white circle at the randomly selected point
@@ -165,6 +166,24 @@ def main():
                 y_tf = (y-screen_height/2.)/screen_height
                 calibrate(sess, optimizer, cap, .1,n_input,X,Y,x_tf,y_tf)
                 test(sess, pred, cap, n_input, X, screen_width, screen_height, x, y)
+        """
+        #Lets see if it can figure out a dot....
+        x = screen_width/2
+        y = screen_height/2
+        while True:
+            img[:] = (0,0,0) # clear
+            cv2.circle(img, (x,y), 10, (255,255,255), -1)
+
+            cv2.waitKey(100)
+            cv2.imshow('calibration', img)
+            cv2.waitKey(100)
+
+            #normalize x and y to be between -1 and 1
+            x_tf = (x-screen_width/2.)/screen_width
+            y_tf = (y-screen_height/2.)/screen_height
+            calibrate(sess, optimizer, cap, .1,n_input,X,Y,x_tf,y_tf)
+            test(sess, pred, cap, n_input, X, screen_width, screen_height, x, y)
+
 
         cv2.destroyWindow('calibration')
         print('Now continuing onto testing')
