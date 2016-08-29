@@ -31,13 +31,13 @@ def calibrate(sess, optimizer, cam, dur, n_input, X, Y, x, y):
         sess.run(optimizer, feed_dict={X: gray_rs/255., Y: [[x,y]]})
 
 
-def test(sess, pred, cam, n_input, X, screen_width, screen_height, x, y):
+def test(sess, pred, cam, n_input, X, screen_width, screen_height, x_tf, y_tf, x, y):
     ret, frame = cam.read()
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     gray_rs = np.reshape(gray,(1,n_input)) - 127.5
     p = sess.run(pred, feed_dict={X: gray_rs/255.})
-    print x,y
-    print p[0][0]*screen_width+screen_width/2., p[0][1]*screen_height+screen_height/2.
+    print 'Reference: %d -> %f, %d -> %f' % (x,x_tf,y,y_tf)
+    print 'Actual: %f -> %d, %f -> %d' % (p[0][0],p[0][0]*screen_width/2.+screen_width/2.,p[0][1],p[0][1]*screen_height/2.+screen_height/2.)
 
 def mlp(x, weights, biases, dropout):
     #Hidden Layer with tanh activation
@@ -60,18 +60,14 @@ def mlp(x, weights, biases, dropout):
     if printing: layer_3 = tf.Print(layer_3, [layer_3], 'layer 3: ')
     #Output layer
     out_layer = tf.matmul(layer_3, weights['out']) + biases['out']
+    #out_layer = tf.maximum(out_layer,[[-1,-1]])
+    #out_layer = tf.minimum(out_layer,[[1,1]])
     if printing: out_layer = tf.Print(out_layer,[out_layer], 'output layer: ')
     return out_layer
 
 def main():
     root = tk.Tk()
 
-#use 1/2 screen width because I personally use dual monitors
-    screen_width = root.winfo_screenwidth()/4
-    screen_height = root.winfo_screenheight()/2
-
-    img = np.zeros((screen_height, screen_width,3), np.uint8)
-    print screen_width, screen_height
     fs = 100
 
     print('starting video')
@@ -84,9 +80,15 @@ def main():
     npxls = frame_h*frame_w
     print "Frame dims are '{0}' x '{1}'".format(frame_w,frame_h)
 
+    #setup the calibration window
+    screen_width = frame_w  #root.winfo_screenwidth()/2
+    screen_height = frame_h #root.winfo_screenheight()/2
+    img = np.zeros((screen_height, screen_width,3), np.uint8)
+    print 'window width: %d, window height: %d' % (screen_width, screen_height)
+
     print('Initializing neural net')
-    learning_rate = 0.001
-    dropout = .75
+    learning_rate = 0.01
+    dropout = .85
     n_input = npxls
     n_hidden_1 = NUM_HIDDEN_UNITS
     n_hidden_2 = NUM_HIDDEN_UNITS
@@ -179,10 +181,10 @@ def main():
             cv2.waitKey(100)
 
             #normalize x and y to be between -1 and 1
-            x_tf = (x-screen_width/2.)/screen_width
-            y_tf = (y-screen_height/2.)/screen_height
+            x_tf = (float(x)-screen_width/2)/float(screen_width)/2.
+            y_tf = (float(y)-screen_height/2)/float(screen_height)/2.
             calibrate(sess, optimizer, cap, .1,n_input,X,Y,x_tf,y_tf)
-            test(sess, pred, cap, n_input, X, screen_width, screen_height, x, y)
+            test(sess, pred, cap, n_input, X, float(screen_width), float(screen_height), x_tf,y_tf,x,y)
 
 
         cv2.destroyWindow('calibration')
@@ -203,7 +205,7 @@ def main():
 
             feed_dict = {X: gray_rs/255.}
             p = sess.run(pred, feed_dict)
-            print p[0][0]*screen_width+screen_width/2, p[0][1]*screen_height+screen_height/2
+            print p[0][0]*screen_width/2+screen_width/2, p[0][1]*screen_height/2+screen_height/2
 
             p_rnd_x, p_rnd_y = np.int32([p[0][0]*screen_width+screen_width/2, p[0][1]*screen_height+screen_height/2])
             print p_rnd_x, p_rnd_y
