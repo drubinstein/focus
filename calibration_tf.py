@@ -13,7 +13,7 @@ import tensorflow as tf
 from six.moves import cPickle
 
 NUM_HIDDEN_UNITS=100
-printing=False
+printing=True
 
 def calibrate(sess, optimizer, cam, dur, n_input, X, Y, x, y):
     #capture for 5 seconds
@@ -87,8 +87,8 @@ def main():
     print 'window width: %d, window height: %d' % (screen_width, screen_height)
 
     print('Initializing neural net')
-    learning_rate = 0.01
-    dropout = .85
+    learning_rate = .01
+    dropout = .75
     n_input = npxls
     n_hidden_1 = NUM_HIDDEN_UNITS
     n_hidden_2 = NUM_HIDDEN_UNITS
@@ -120,9 +120,9 @@ def main():
     cost = tf.pow(pred-Y,2)
     #if printing: cost = tf.Print(cost,[cost],'Sq.Err.: ')
     cost = tf.reduce_mean(cost)
-    #if printing: cost = tf.Print(cost,[cost],'MSE: ')
+    if printing: cost = tf.Print(cost,[cost],'MSE: ')
     #cost = tf.sqrt(cost)
-    if printing: cost = tf.Print(cost,[cost],'RMSE: ')
+    #if printing: cost = tf.Print(cost,[cost],'RMSE: ')
     optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
 
     init = tf.initialize_all_variables()
@@ -152,7 +152,6 @@ def main():
             test(sess, pred, cap, n_input, X, screen_width, screen_height,x,y)
         """
         #alternative calibration
-        """
         for x in xrange(0,screen_width,100):
             for y in xrange(0,screen_height,100):
                 #create a white circle at the randomly selected point
@@ -164,14 +163,14 @@ def main():
                 cv2.waitKey(100)
 
                 #normalize x and y to be between -1 and 1
-                x_tf = (x-screen_width/2.)/screen_width
-                y_tf = (y-screen_height/2.)/screen_height
+                x_tf = (x-screen_width/2.)/(screen_width/2.)
+                y_tf = (y-screen_height/2.)/(screen_height/2.)
                 calibrate(sess, optimizer, cap, .1,n_input,X,Y,x_tf,y_tf)
-                test(sess, pred, cap, n_input, X, screen_width, screen_height, x, y)
+                test(sess, pred, cap, n_input, X, float(screen_width), float(screen_height), x_tf,y_tf,x, y)
         """
         #Lets see if it can figure out a dot....
-        x = screen_width/2
-        y = screen_height/2
+        x = screen_width/4
+        y = screen_height/4
         while True:
             img[:] = (0,0,0) # clear
             cv2.circle(img, (x,y), 10, (255,255,255), -1)
@@ -185,6 +184,7 @@ def main():
             y_tf = (float(y)-screen_height/2)/(screen_height/2.)
             calibrate(sess, optimizer, cap, .1,n_input,X,Y,x_tf,y_tf)
             test(sess, pred, cap, n_input, X, float(screen_width), float(screen_height), x_tf,y_tf,x,y)
+        """
 
 
         cv2.destroyWindow('calibration')
