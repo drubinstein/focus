@@ -43,7 +43,7 @@ def mlp(x, weights, biases, dropout):
     layer_2 = tf.nn.dropout(layer_2, dropout)
     if printing: layer_2 = tf.Print(layer_2, [layer_2], 'layer 2: ', summarize=NUM_HIDDEN_UNITS)
     #layer 3
-    layer_3 = tf.add(tf.matmul(layer_1, weights['h3']), biases['b3'])
+    layer_3 = tf.add(tf.matmul(layer_2, weights['h3']), biases['b3'])
     layer_3 = tf.nn.relu(layer_3)
     layer_3 = tf.nn.dropout(layer_3, dropout)
     if printing: layer_2 = tf.Print(layer_3, [layer_3], 'layer 3: ', summarize=NUM_HIDDEN_UNITS)
@@ -125,14 +125,12 @@ def main():
             y = randint(0,screen_height-1)#/screen_height
             print x,y
 
-            target = np.array([[np.float32(x), np.float32(y)]])
             #create a white circle at the randomly selected point
             cv2.circle(img, (x,y), 10, (255,255,255), -1)
 
             cv2.waitKey(100)
             cv2.imshow('calibration', img)
             cv2.waitKey(100)
-
 
             calibrate(sess, optimizer, cap, 1, n_input, X, Y, x/float(screen_width) , y/float(screen_height))
             ret, frame = cap.read()
@@ -143,7 +141,6 @@ def main():
         #alternative calibration
         for x in xrange(0,screen_width,100):
             for y in xrange(0,screen_height,100):
-                target = np.array([[np.float32(x), np.float32(y)]])
                 #create a white circle at the randomly selected point
                 img[:] = (0,0,0) # clear
                 cv2.circle(img, (x,y), 10, (255,255,255), -1)
@@ -155,6 +152,7 @@ def main():
                 calibrate(sess, optimizer, cap, .1,n_input,X,Y,x/float(screen_width),y/float(screen_height))
         """
 
+        cv2.destroyWindow('calibration')
         print('Now continuing onto testing')
         img = np.zeros((screen_height, screen_width,3), np.uint8)
 

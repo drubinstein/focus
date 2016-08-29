@@ -143,7 +143,6 @@ def main():
             y = randint(0,screen_height-1)#/screen_height
             print x,y
 
-            target = np.array([[np.float32(x), np.float32(y)]])
             #create a white circle at the randomly selected point
             cv2.circle(img, (x,y), 10, (255,255,255), -1)
 
@@ -160,7 +159,6 @@ def main():
         #alternative calibration
         for x in xrange(0,screen_width,100):
             for y in xrange(0,screen_height,100):
-                target = np.array([[np.float32(x), np.float32(y)]])
                 #create a white circle at the randomly selected point
                 img[:] = (0,0,0) # clear
                 cv2.circle(img, (x,y), 10, (255,255,255), -1)
