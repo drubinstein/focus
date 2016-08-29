@@ -181,8 +181,8 @@ def main():
             cv2.waitKey(100)
 
             #normalize x and y to be between -1 and 1
-            x_tf = (float(x)-screen_width/2)/float(screen_width)/2.
-            y_tf = (float(y)-screen_height/2)/float(screen_height)/2.
+            x_tf = (float(x)-screen_width/2)/(screen_width/2.)
+            y_tf = (float(y)-screen_height/2)/(screen_height/2.)
             calibrate(sess, optimizer, cap, .1,n_input,X,Y,x_tf,y_tf)
             test(sess, pred, cap, n_input, X, float(screen_width), float(screen_height), x_tf,y_tf,x,y)
 
