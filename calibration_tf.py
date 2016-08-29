@@ -29,7 +29,7 @@ def calibrate(sess, optimizer, cam, dur, n_input, X, Y, x, y):
         #gray_sc = np.float32(gray / 255.)
 
         #Now go train!
-        sess.run(optimizer, feed_dict={X: gray_rs, Y: [[x,y]]})
+        sess.run(optimizer, feed_dict={X: gray_rs/255., Y: [[x,y]]})
 
 def mlp(x, weights, biases, dropout):
     #Hidden Layer with tanh activation
@@ -48,7 +48,7 @@ def mlp(x, weights, biases, dropout):
     layer_3 = tf.nn.dropout(layer_3, dropout)
     if printing: layer_2 = tf.Print(layer_3, [layer_3], 'layer 3: ', summarize=NUM_HIDDEN_UNITS)
     #Output layer
-    out_layer = tf.matmul(layer_2, weights['out']) + biases['out']
+    out_layer = tf.matmul(layer_3, weights['out']) + biases['out']
     if printing: out_layer = tf.Print(out_layer,[out_layer], 'output layer: ')
     return out_layer
 
@@ -74,7 +74,7 @@ def main():
     print "Frame dims are '{0}' x '{1}'".format(frame_w,frame_h)
 
     print('Initializing neural net')
-    learning_rate = 0.0001
+    learning_rate = 0.001
     dropout = .75
     n_input = npxls
     n_hidden_1 = NUM_HIDDEN_UNITS
@@ -101,16 +101,22 @@ def main():
     pred = mlp(X,weights, biases, dropout)
 
     #define cost function
-    cost = tf.sqrt(tf.reduce_sum(tf.pow(pred-Y,2))/2)
+    #define cost function
+    cost = tf.pow(pred-Y,2)
+    #if printing: cost = tf.Print(cost,[cost],'Sq.Err.: ')
+    cost = tf.reduce_mean(cost)
+    #if printing: cost = tf.Print(cost,[cost],'MSE: ')
+    cost = tf.sqrt(cost)
+    #if printing: cost = tf.Print(cost,[cost],'RMSE: ')
     optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
+
     init = tf.initialize_all_variables()
 
     with tf.Session() as sess:
         sess.run(init)
 
         print('Calibrating')
-        """
-        npts = 15
+        npts = 20
         print "generating '{0}' random points to choose from".format(npts)
         for _ in xrange(0,npts):
             img[:] = (0,0,0) # clear
@@ -128,7 +134,11 @@ def main():
             cv2.waitKey(100)
 
 
-            calibrate(sess, optimizer, cap, 1, n_input, X, Y, x , y)
+            calibrate(sess, optimizer, cap, 1, n_input, X, Y, x/float(screen_width) , y/float(screen_height))
+            ret, frame = cap.read()
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            gray_rs = np.reshape(gray,(1,n_input))
+            print sess.run(pred, feed_dict={X: gray_rs/255.})
         """
         #alternative calibration
         for x in xrange(0,screen_width,100):
@@ -142,7 +152,8 @@ def main():
                 cv2.imshow('calibration', img)
                 cv2.waitKey(100)
 
-                calibrate(sess, optimizer, cap, .1,n_input,X,Y,x,y)
+                calibrate(sess, optimizer, cap, .1,n_input,X,Y,x/float(screen_width),y/float(screen_height))
+        """
 
         print('Now continuing onto testing')
         img = np.zeros((screen_height, screen_width,3), np.uint8)
@@ -157,10 +168,9 @@ def main():
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
             #cut off the left and right sides (cause wide screen is stupid)
-            gray_sc = np.float32(gray)
             gray_rs = np.reshape(gray,(1,n_input))
 
-            feed_dict = {X: gray_rs}
+            feed_dict = {X: gray_rs/255.}
             p = sess.run(pred, feed_dict)
             print p[0]
 

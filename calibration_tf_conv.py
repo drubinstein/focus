@@ -26,7 +26,7 @@ def calibrate(sess, optimizer, cam, dur, n_input, X, Y, x, y):
         #gray_sc = np.float32(gray / 255.)
 
         #Now go train!
-        sess.run(optimizer, feed_dict={X: gray_rs, Y: [[x,y]]})
+        sess.run(optimizer, feed_dict={X: gray_rs/255., Y: [[x,y]]})
 
 def conv2d(x, W, b, strides=1):
     # Conv2D wrapper, with bias and relu activation
@@ -102,9 +102,9 @@ def main():
         'wc1': tf.Variable(tf.random_normal([5, 5, 1, 32])),
         # 5x5 conv, 32 inputs, 64 outputs
         'wc2': tf.Variable(tf.random_normal([5, 5, 32, 64])),
-        # fully connected, 7*7*64 inputs, 1024 outputs
-        'wd1': tf.Variable(tf.random_normal([8*8*64, 1024])),
-        # 1024 inputs, 10 outputs (class prediction)
+        # fully connected, 8*8*64 inputs, 1024 outputs
+        'wd1': tf.Variable(tf.random_normal([256*64, 1024])),
+        # 1024 inputs, 2 outputs (class prediction)
         'out': tf.Variable(tf.random_normal([1024, n_out]))
     }
 
@@ -119,11 +119,14 @@ def main():
     pred = mlp(X, weights, biases, dropout, frame_w, frame_h)
 
     #define cost function
-    cost = tf.sqrt(tf.reduce_sum(tf.pow(pred-Y,2))/2)
-    if printing: cost = tf.Print(cost,[cost],'cost: ')
+    cost = tf.pow(pred-Y,2)
+    #if printing: cost = tf.Print(cost,[cost],'Sq.Err.: ')
+    cost = tf.reduce_mean(cost)
+    #if printing: cost = tf.Print(cost,[cost],'MSE: ')
+    cost = tf.sqrt(cost)
+    if printing: cost = tf.Print(cost,[cost],'RMSE: ')
 
     optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
-    #if printing: optimizer = tf.Print(optimizer,[optimizer],'optimizer: ')
 
     init = tf.initialize_all_variables()
 
@@ -131,8 +134,7 @@ def main():
         sess.run(init)
 
         print('Calibrating')
-        """
-        npts = 15
+        npts = 10
         print "generating '{0}' random points to choose from".format(npts)
         for _ in xrange(0,npts):
             img[:] = (0,0,0) # clear
@@ -149,8 +151,11 @@ def main():
             cv2.imshow('calibration', img)
             cv2.waitKey(100)
 
-
-            calibrate(sess, optimizer, cap, 1, n_input, X, Y, x , y)
+            calibrate(sess, optimizer, cap, 2, n_input, X, Y, x/float(screen_width) , y/float(screen_height))
+            ret, frame = cap.read()
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            gray_rs = np.reshape(gray,(1,n_input))
+            print sess.run(pred, feed_dict={X: gray_rs/255.}).shape
         """
         #alternative calibration
         for x in xrange(0,screen_width,100):
@@ -164,8 +169,10 @@ def main():
                 cv2.imshow('calibration', img)
                 cv2.waitKey(100)
 
-                calibrate(sess, optimizer, cap, .1,n_input,X,Y,x,y)
+                calibrate(sess, optimizer, cap, .1,n_input,X,Y,x/float(screen_width),y/float(screen_height))
+        """
 
+        cv2.destroyWindow('calibration')
         print('Now continuing onto testing')
         img = np.zeros((screen_height, screen_width,3), np.uint8)
 
@@ -179,10 +186,9 @@ def main():
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
             #cut off the left and right sides (cause wide screen is stupid)
-            gray_sc = np.float32(gray)
             gray_rs = np.reshape(gray,(1,n_input))
 
-            feed_dict = {X: gray_rs}
+            feed_dict = {X: gray_rs/255.}
             p = sess.run(pred, feed_dict)
             print p[0]
 
@@ -190,7 +196,7 @@ def main():
 
             cv2.imshow('GrayFrame',gray)
             img[:] = (0,0,0) # clear
-            cv2.circle(img, (p_rnd[0], p_rnd[1]), 10, (255,255,255), -1)
+            cv2.circle(img, (p_rnd[0]*screen_width, p_rnd[1]*screen_height), 10, (255,255,255), -1)
             cv2.imshow('Focus', img)
             #Display the resulting frame
             if cv2.waitKey(1) & 0xFF == ord('q'):
