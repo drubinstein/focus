@@ -12,8 +12,7 @@ import tensorflow as tf
 
 from six.moves import cPickle
 
-NUM_HIDDEN_UNITS=200
-BATCH_SIZE=1
+NUM_HIDDEN_UNITS=100
 printing=False
 
 def calibrate(sess, optimizer, cam, dur, n_input, X, Y, x, y):
@@ -29,24 +28,27 @@ def calibrate(sess, optimizer, cam, dur, n_input, X, Y, x, y):
         #gray_sc = np.float32(gray / 255.)
 
         #Now go train!
-        sess.run(optimizer, feed_dict={X: gray_rs/255., Y: [[x,y]]})
+        sess.run(optimizer, feed_dict={X: (gray_rs-127.5)/255., Y: [[x,y]]})
 
 def mlp(x, weights, biases, dropout):
     #Hidden Layer with tanh activation
     layer_1 = tf.add(tf.matmul(x, weights['h1']), biases['b1'])
+    layer_1  = tf.nn.l2_normalize(layer_1, dim=0)
     layer_1 = tf.nn.relu(layer_1)
     layer_1 = tf.nn.dropout(layer_1, dropout)
-    if printing: layer_1 = tf.Print(layer_1, [layer_1], 'layer 1: ', summarize=NUM_HIDDEN_UNITS)
+    if printing: layer_1 = tf.Print(layer_1, [layer_1], 'layer 1: ')
     #Hidden Layer with RELU activation
     layer_2 = tf.add(tf.matmul(layer_1, weights['h2']), biases['b2'])
+    layer_2  = tf.nn.l2_normalize(layer_2, dim=0)
     layer_2 = tf.nn.relu(layer_2)
     layer_2 = tf.nn.dropout(layer_2, dropout)
-    if printing: layer_2 = tf.Print(layer_2, [layer_2], 'layer 2: ', summarize=NUM_HIDDEN_UNITS)
+    if printing: layer_2 = tf.Print(layer_2, [layer_2], 'layer 2: ')
     #layer 3
     layer_3 = tf.add(tf.matmul(layer_2, weights['h3']), biases['b3'])
+    layer_3  = tf.nn.l2_normalize(layer_3, dim=0)
     layer_3 = tf.nn.relu(layer_3)
     layer_3 = tf.nn.dropout(layer_3, dropout)
-    if printing: layer_2 = tf.Print(layer_3, [layer_3], 'layer 3: ', summarize=NUM_HIDDEN_UNITS)
+    if printing: layer_3 = tf.Print(layer_3, [layer_3], 'layer 3: ')
     #Output layer
     out_layer = tf.matmul(layer_3, weights['out']) + biases['out']
     if printing: out_layer = tf.Print(out_layer,[out_layer], 'output layer: ')
@@ -88,12 +90,14 @@ def main():
         'h1': tf.Variable(tf.random_normal([n_input, n_hidden_1])),
         'h2': tf.Variable(tf.random_normal([n_hidden_1, n_hidden_2])),
         'h3': tf.Variable(tf.random_normal([n_hidden_2, n_hidden_3])),
+        #'out': tf.Variable(tf.zeros([n_hidden_3, n_out]))
         'out': tf.Variable(tf.random_normal([n_hidden_3, n_out]))
         }
     biases = {
         'b1': tf.Variable(tf.random_normal([n_hidden_1])),
         'b2': tf.Variable(tf.random_normal([n_hidden_2])),
         'b3': tf.Variable(tf.random_normal([n_hidden_3])),
+        #'out': tf.Variable(tf.random_normal([n_out],.5))
         'out': tf.Variable(tf.random_normal([n_out]))
         }
 
@@ -106,8 +110,8 @@ def main():
     #if printing: cost = tf.Print(cost,[cost],'Sq.Err.: ')
     cost = tf.reduce_mean(cost)
     #if printing: cost = tf.Print(cost,[cost],'MSE: ')
-    cost = tf.sqrt(cost)
-    #if printing: cost = tf.Print(cost,[cost],'RMSE: ')
+    #cost = tf.sqrt(cost)
+    if printing: cost = tf.Print(cost,[cost],'RMSE: ')
     optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(cost)
 
     init = tf.initialize_all_variables()
@@ -116,6 +120,7 @@ def main():
         sess.run(init)
 
         print('Calibrating')
+        """
         npts = 20
         print "generating '{0}' random points to choose from".format(npts)
         for _ in xrange(0,npts):
@@ -136,7 +141,8 @@ def main():
             ret, frame = cap.read()
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             gray_rs = np.reshape(gray,(1,n_input))
-            print sess.run(pred, feed_dict={X: gray_rs/255.})
+            p = sess.run(pred, feed_dict={X: gray_rs/255.})
+            print p[0][0]*screen_width, p[0][1]*screen_height
         """
         #alternative calibration
         for x in xrange(0,screen_width,100):
@@ -149,8 +155,16 @@ def main():
                 cv2.imshow('calibration', img)
                 cv2.waitKey(100)
 
-                calibrate(sess, optimizer, cap, .1,n_input,X,Y,x/float(screen_width),y/float(screen_height))
-        """
+                #normalize x and y to be between -1 and 1
+                x_tf = (x-screen_width/2.)/screen_width
+                y_tf = (y-screen_height/2.)/screen_height
+                calibrate(sess, optimizer, cap, .1,n_input,X,Y,x_tf,y_tf)
+                ret, frame = cap.read()
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                gray_rs = np.reshape(gray,(1,n_input))
+                p = sess.run(pred, feed_dict={X: (gray_rs-127.5)/255.})
+                print x,y
+                print p[0][0]*screen_width+screen_width/2., p[0][1]*screen_height+screen_height/2.
 
         cv2.destroyWindow('calibration')
         print('Now continuing onto testing')
@@ -170,13 +184,14 @@ def main():
 
             feed_dict = {X: gray_rs/255.}
             p = sess.run(pred, feed_dict)
-            print p[0]
+            print p[0][0]*screen_width, p[0][1]*screen_height
 
-            p_rnd = np.int32(p[0])
+            p_rnd_x, p_rnd_y = np.int32([p[0][0]*screen_width, p[0][1]*screen_height])
+            print p_rnd_x, p_rnd_y
 
             cv2.imshow('GrayFrame',gray)
             img[:] = (0,0,0) # clear
-            cv2.circle(img, (p_rnd[0], p_rnd[1]), 10, (255,255,255), -1)
+            cv2.circle(img, (p_rnd_x, p_rnd_y), 10, (255,255,255), -1)
             cv2.imshow('Focus', img)
             #Display the resulting frame
             if cv2.waitKey(1) & 0xFF == ord('q'):
