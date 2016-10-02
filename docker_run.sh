@@ -3,6 +3,13 @@
 #Description
 #By David Rubinstein
 #alt --user=$USER
+
+#figure out way to get tensorflow inside f the instance
+#for CPU
+# export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-0.11.0rc0-cp27-none-linux_x86_64.whl
+#for GPU
+# export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.11.0rc0-cp27-none-linux_x86_64.whl
+#sudo pip install --upgrade $TF_BINARY_URL
 docker run -it -p 55555:22 -p 9000:9000 -p 8000:8000 \
 	--user $(id -u) \
 	--env="DISPLAY" \

@@ -1,5 +1,5 @@
-#!/bin/python
-#start with (maybe)  docker run -p 9000:9000 -p 8000:8000 -v /:/mount -t -i bamos/openface /bin/bash
+#!/usr/bin/python
+#start from docker instance (run_docker.sh)
 
 import openface
 import dlib
@@ -28,10 +28,13 @@ while(True):
     if face_box is not None:
         top_left = (face_box.left(), face_box.top())
         bot_right = (face_box.right(), face_box.bottom())
-        cv2.rectangle(frame, top_left, bot_right, (0,255,0),3)
-    #cv2.rectangle(frame, (0,0), (96,96), (0,255,0), 3)
+        aligned_frame = alib.align(96, frame)
+
+        cv2.rectangle(frame, top_left, bot_right, (0,255,0), 3)
 
     cv2.imshow('Hello', frame)
+    cv2.imshow('aligned', aligned_frame)
+
 
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
