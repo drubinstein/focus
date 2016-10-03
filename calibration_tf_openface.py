@@ -26,7 +26,7 @@ def scale(img):
 
     return img
 
-def calibrate(sess, optimizer, dur, cam, alib, face_dim, X, Y, F, x, y):
+def calibrate(sess, optimizer, dur, cam, alib, face_dim, X, Y, F, x_tf, y_tf, screen_width = None, screen_height = None, x = None, y = None, pred = None):
     #capture for 10 seconds
     t_end = time.time() + dur
     while time.time() < t_end:
@@ -46,7 +46,17 @@ def calibrate(sess, optimizer, dur, cam, alib, face_dim, X, Y, F, x, y):
             f = [[face_box.left(), face_box.top(), face_box.right(), face_box.bottom()]]
 
             #Now go train!
-            sess.run(optimizer, feed_dict={X: gray_face, F: f, Y: [[x,y]]})
+            sess.run(optimizer, feed_dict={X: gray_face, F: f, Y: [[x_tf,y_tf]]})
+
+            """
+            if pred is not None and x is not None and y is not None and screen_width is not None and screen_height is not None:
+                p = sess.run(pred, feed_dict={X: gray_face, F: f})
+                print 'On cal reference: %d -> %f, %d -> %f' % (x,x_tf,y,y_tf)
+                print 'On cal actual: %f -> %d, %f -> %d' % (p[0][0],p[0][0]*screen_width/2.+screen_width/2.,p[0][1],p[0][1]*screen_height/2.+screen_height/2.)
+            """
+
+
+
 
 def test(sess, pred, cam, alib, face_dim, X, F, screen_width, screen_height, x_tf, y_tf, x, y):
     ret, frame = cam.read()
@@ -70,7 +80,7 @@ def conv2d(x, W, b, strides=1):
     # Conv2D wrapper, with bias and relu activation
     x = tf.nn.conv2d(x, W, strides=[1, strides, strides, 1], padding='SAME')
     x = tf.nn.bias_add(x, b)
-    #return tf.nn.relu(x)
+    return tf.nn.relu(x)
     return x
 
 def maxpool2d(x, k=2):
@@ -86,6 +96,7 @@ def mlp(x, f, weights, biases, conv_drop, hidden_drop, face_dim):
     l2 = conv2d(l1, weights['wc2'], biases['bc2'])
     l2 = maxpool2d(l2)
     l2 = tf.nn.l2_normalize(l2,0)
+    #l2 = tf.reshape(l2, [-1, weights['wd1'].get_shape().as_list()[0]]) #reshape to (?, 2048)
     l2 = tf.nn.dropout(l2, conv_drop)
     if printing: l2 = tf.Print(l2, [l2], 'l2: ')
 
@@ -97,17 +108,33 @@ def mlp(x, f, weights, biases, conv_drop, hidden_drop, face_dim):
     if printing: l3 = tf.Print(l3, [l3], 'l3: ')
 
     l4 = tf.add(tf.matmul(l3, weights['wd1']), biases['bd1'])
-    #l4 = tf.nn.relu(l4)
+    #l4 = tf.add(tf.matmul(l2, weights['wd1']), biases['bd1'])
+    l4 = tf.nn.relu(l4)
     l4 = tf.nn.l2_normalize(l4,0)
     l4 = tf.nn.dropout(l4, hidden_drop)
     if printing: out = tf.Print(l4, [l4], 'l4: ')
 
     #append the bounding box locations
-    out = tf.concat(1, [l4, f])
-    #out = l4
+    #out = tf.concat(1, [l4, f])
+    out = l4
     out = tf.add(tf.matmul(out, weights['out']), biases['out'])
     if printing: out = tf.Print(out, [out], 'out: ')
     return out
+
+def mlp_dense(x, f, weights, biases, hidden_drop, face_dim):
+    l1 = tf.reshape(x, [-1, face_dim**2]) #reshape to (?, face_dim*2)
+    l1 = tf.add(tf.matmul(l1, weights['w1']), biases['b1'])
+    l1 = tf.nn.relu(l1)
+    l1 = tf.nn.dropout(l1, hidden_drop)
+
+    l2 = tf.add(tf.matmul(l1, weights['w2']), biases['b2'])
+    l2 = tf.nn.relu(l2)
+    l2 = tf.nn.dropout(l2, hidden_drop)
+
+    out = tf.add(tf.matmul(l2, weights['out']), biases['out'])
+    if printing: out = tf.Print(out, [out], 'out: ')
+    return out
+
 
 def main():
     root = tk.Tk()
@@ -151,23 +178,37 @@ def main():
 
     # Store layers weight & bias
     weights = {
-        'wc1': tf.Variable(tf.random_normal([3, 3, 1, 32])),  # 4x4 conv,   1 input, 32 outputs
-        'wc2': tf.Variable(tf.random_normal([3, 3, 32, 64])),  # 4x4 conv, 32 input, 64 outputs
-        'wc3': tf.Variable(tf.random_normal([3, 3, 64, 128])), # 4x4 conv, 64 input, 128 outputs
-        'wd1': tf.Variable(tf.random_normal([128*4*4, 625])), # fully connected. 128*4*4 inputs from conv layer
-        'out': tf.Variable(tf.random_normal([625+4, n_out])) #625 outputs from the conv layer + 4 inputs representing the location of the head within the original iamge
+        'wc1': tf.Variable(tf.random_uniform([3, 3, 1, 32], minval=-.00001, maxval=.00001)),  # 4x4 conv,   1 input, 32 outputs
+        'wc2': tf.Variable(tf.random_uniform([3, 3, 32, 64], minval=-.00001, maxval=.00001)),  # 4x4 conv, 32 input, 64 outputs
+        'wc3': tf.Variable(tf.random_uniform([3, 3, 64, 128])), # 4x4 conv, 64 input, 128 outputs
+        'wd1': tf.Variable(tf.random_uniform([128*4*4, 1024])), # fully connected. 128*4*4 inputs from conv layer
+        #'out': tf.Variable(tf.random_uniform([1024+4, n_out])) #625 outputs from the conv layer + 4 inputs representing the location of the head within the original iamge
+        'out': tf.Variable(tf.random_uniform([1024, n_out], minval=-.00001, maxval=.00001)) #625 outputs from the conv layer + 4 inputs representing the location of the head within the original iamge
     }
 
     biases = {
-        'bc1': tf.Variable(tf.random_normal([32])),
-        'bc2': tf.Variable(tf.random_normal([64])),
-        'bc3': tf.Variable(tf.random_normal([128])),
-        'bd1': tf.Variable(tf.random_normal([625])),
-        'out': tf.Variable(tf.random_normal([n_out]))
+        'bc1': tf.Variable(tf.random_uniform([32], minval=-.00001, maxval=.00001)),
+        'bc2': tf.Variable(tf.random_uniform([64], minval=-.00001, maxval=.00001)),
+        'bc3': tf.Variable(tf.random_uniform([128], minval=-.00001, maxval=.00001)),
+        'bd1': tf.Variable(tf.random_uniform([1024], minval=-.00001, maxval=.00001)),
+        'out': tf.Variable(tf.random_uniform([n_out], minval=-.00001, maxval=.00001))
+    }
+
+    weights_d = {
+        'w1' : tf.Variable(tf.random_uniform([face_dim**2, 2048], minval=-.00001, maxval=.00001)),
+        'w2' : tf.Variable(tf.random_uniform([2048, 512], minval=-.00001, maxval=.00001)),
+        'out': tf.Variable(tf.random_uniform([512, n_out], minval=-.00001, maxval=.00001)),
+    }
+
+    biases_d = {
+        'b1' : tf.Variable(tf.random_uniform([2048], minval=-.00001, maxval=.00001)),
+        'b2' : tf.Variable(tf.random_uniform([512], minval=-.00001, maxval=.00001)),
+        'out': tf.Variable(tf.random_uniform([n_out], minval=-.00001, maxval=.00001))
     }
 
     #create multilayer perceptron
     pred = mlp(X, F, weights, biases, conv_drop, hidden_drop, face_dim)
+    #pred = mlp_dense(X, F, weights_d, biases_d, hidden_drop, face_dim)
 
     #define cost function
     #for now the cost function is the MSE
@@ -236,7 +277,7 @@ def main():
             #normalize x and y to be between -1 and 1
             x_tf = (float(x)/screen_width-.5)*2.
             y_tf = (float(y)/screen_height-.5)*2.
-            calibrate(sess, train_op, .5, cap, alib, face_dim, X, Y, F, x_tf, y_tf)
+            calibrate(sess, train_op, .5, cap, alib, face_dim, X, Y, F, x_tf, y_tf, screen_width, screen_height, x, y, pred)
             test(sess, pred, cap, alib, face_dim, X, F, float(screen_width), float(screen_height), x_tf, y_tf, x, y)
 
         cv2.destroyWindow('calibration')
