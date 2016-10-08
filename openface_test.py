@@ -29,11 +29,17 @@ while(True):
         top_left = (face_box.left(), face_box.top())
         bot_right = (face_box.right(), face_box.bottom())
         aligned_frame = alib.align(96, frame)
+        cv2.imshow('aligned', aligned_frame)
 
         cv2.rectangle(frame, top_left, bot_right, (0,255,0), 3)
 
+        #coordinates 36,44,45,41 make up a bounding box for eyes
+        landmarks = alib.findLandmarks(frame, face_box)
+        eye_top_left = (landmarks[0][0], landmarks[17][1])
+        eye_bot_right = (landmarks[16][0], landmarks[28][1])
+        cv2.rectangle(frame, eye_top_left, eye_bot_right, (0,0,255), 1)
+
     cv2.imshow('Hello', frame)
-    cv2.imshow('aligned', aligned_frame)
 
 
 

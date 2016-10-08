@@ -22,7 +22,6 @@ def scale(img):
     img = cv2.equalizeHist(img)
     #now convert to [-1,1]
     img = (np.float32(img)/255.-.5)*2.
-    #cv2.imshow('aligned', img)
 
     return img
 
@@ -39,6 +38,7 @@ def calibrate(sess, optimizer, dur, cam, alib, face_dim, X, Y, F, x_tf, y_tf, sc
             top_left = (face_box.left(), face_box.top())
             bot_right = (face_box.right(), face_box.bottom())
             aligned_face = alib.align(face_dim, frame)
+            cv2.imshow('aligned', aligned_face)
 
             #rescale and center from 0-255 to [-1,1]
             gray_face = scale(aligned_face)
@@ -75,16 +75,17 @@ def test(sess, pred, cam, alib, face_dim, X, F, screen_width, screen_height, x_t
         p = sess.run(pred, feed_dict={X: gray_face, F: f})
         print 'Reference: %d -> %f, %d -> %f' % (x,x_tf,y,y_tf)
         print 'Actual: %f -> %d, %f -> %d' % (p[0][0],p[0][0]*screen_width/2.+screen_width/2.,p[0][1],p[0][1]*screen_height/2.+screen_height/2.)
+        return p
 
 def conv2d(x, W, b, strides=1):
     # Conv2D wrapper, with bias and relu activation
     x = tf.nn.conv2d(x, W, strides=[1, strides, strides, 1], padding='SAME')
     x = tf.nn.bias_add(x, b)
     return tf.nn.relu(x)
-    return x
+    #return x
 
 def maxpool2d(x, k=2):
-   return tf.nn.max_pool(x, ksize=[1, k, k, 1], strides=[1, k, k, 1], padding='SAME')
+    return tf.nn.max_pool(x, ksize=[1, k, k, 1], strides=[1, k, k, 1], padding='SAME')
 
 def mlp(x, f, weights, biases, conv_drop, hidden_drop, face_dim):
     l1 = conv2d(x, weights['wc1'], biases['bc1'])
@@ -122,15 +123,23 @@ def mlp(x, f, weights, biases, conv_drop, hidden_drop, face_dim):
     return out
 
 def mlp_dense(x, f, weights, biases, hidden_drop, face_dim):
+
+    #The idea heare is that the first two layers will try to backproject and the final layer
+    #will use the face location information to figure out where the origin truly was
+
     l1 = tf.reshape(x, [-1, face_dim**2]) #reshape to (?, face_dim*2)
     l1 = tf.add(tf.matmul(l1, weights['w1']), biases['b1'])
+    l1 = tf.nn.l2_normalize(l1,0)
     l1 = tf.nn.relu(l1)
     l1 = tf.nn.dropout(l1, hidden_drop)
 
     l2 = tf.add(tf.matmul(l1, weights['w2']), biases['b2'])
+    l2 = tf.nn.l2_normalize(l2,0)
     l2 = tf.nn.relu(l2)
     l2 = tf.nn.dropout(l2, hidden_drop)
 
+    #add in the bounding box information
+    out = tf.concat(1, [l2, f])
     out = tf.add(tf.matmul(l2, weights['out']), biases['out'])
     if printing: out = tf.Print(out, [out], 'out: ')
     return out
@@ -167,48 +176,48 @@ def main():
     print "Frame dims are '{0}' x '{1}'".format(frame_w,frame_h)
 
     print('Initializing neural net')
-    learning_rate = .001
+    learning_rate = .01
     conv_drop = .8
-    hidden_drop = .6
+    hidden_drop = .8
     n_out = 2 #coordinates of where the user is gazing
-    face_dim = 28 #size of face bounding box
+    face_dim = 96 #size of face bounding box
     X = tf.placeholder(tf.float32, [None, face_dim, face_dim, 1])
-    F = tf.placeholder(tf.float32, [None, 4]) #4 coordinates of a face
+    F = tf.placeholder(tf.float32, [None, 6]) #4 coordinates of a face + 2 for scaling
     Y = tf.placeholder(tf.float32, [None, n_out])
 
     # Store layers weight & bias
     weights = {
-        'wc1': tf.Variable(tf.random_uniform([3, 3, 1, 32], minval=-.00001, maxval=.00001)),  # 4x4 conv,   1 input, 32 outputs
-        'wc2': tf.Variable(tf.random_uniform([3, 3, 32, 64], minval=-.00001, maxval=.00001)),  # 4x4 conv, 32 input, 64 outputs
-        'wc3': tf.Variable(tf.random_uniform([3, 3, 64, 128])), # 4x4 conv, 64 input, 128 outputs
-        'wd1': tf.Variable(tf.random_uniform([128*4*4, 1024])), # fully connected. 128*4*4 inputs from conv layer
-        #'out': tf.Variable(tf.random_uniform([1024+4, n_out])) #625 outputs from the conv layer + 4 inputs representing the location of the head within the original iamge
-        'out': tf.Variable(tf.random_uniform([1024, n_out], minval=-.00001, maxval=.00001)) #625 outputs from the conv layer + 4 inputs representing the location of the head within the original iamge
-    }
+            'wc1': tf.Variable(tf.random_uniform([3, 3, 1, 32], minval=-.00001, maxval=.00001)),  # 4x4 conv,   1 input, 32 outputs
+            'wc2': tf.Variable(tf.random_uniform([3, 3, 32, 64], minval=-.00001, maxval=.00001)),  # 4x4 conv, 32 input, 64 outputs
+            'wc3': tf.Variable(tf.random_uniform([3, 3, 64, 128])), # 4x4 conv, 64 input, 128 outputs
+            'wd1': tf.Variable(tf.random_uniform([128*4*4, 1024])), # fully connected. 128*4*4 inputs from conv layer
+            #'out': tf.Variable(tf.random_uniform([1024+4, n_out])) #625 outputs from the conv layer + 4 inputs representing the location of the head within the original iamge
+            'out': tf.Variable(tf.random_uniform([1024, n_out], minval=-.00001, maxval=.00001)) #625 outputs from the conv layer + 4 inputs representing the location of the head within the original iamge
+            }
 
     biases = {
-        'bc1': tf.Variable(tf.random_uniform([32], minval=-.00001, maxval=.00001)),
-        'bc2': tf.Variable(tf.random_uniform([64], minval=-.00001, maxval=.00001)),
-        'bc3': tf.Variable(tf.random_uniform([128], minval=-.00001, maxval=.00001)),
-        'bd1': tf.Variable(tf.random_uniform([1024], minval=-.00001, maxval=.00001)),
-        'out': tf.Variable(tf.random_uniform([n_out], minval=-.00001, maxval=.00001))
-    }
+            'bc1': tf.Variable(tf.random_uniform([32], minval=-.00001, maxval=.00001)),
+            'bc2': tf.Variable(tf.random_uniform([64], minval=-.00001, maxval=.00001)),
+            'bc3': tf.Variable(tf.random_uniform([128], minval=-.00001, maxval=.00001)),
+            'bd1': tf.Variable(tf.random_uniform([1024], minval=-.00001, maxval=.00001)),
+            'out': tf.Variable(tf.random_uniform([n_out], minval=-.00001, maxval=.00001))
+            }
 
     weights_d = {
-        'w1' : tf.Variable(tf.random_uniform([face_dim**2, 2048], minval=-.00001, maxval=.00001)),
-        'w2' : tf.Variable(tf.random_uniform([2048, 512], minval=-.00001, maxval=.00001)),
-        'out': tf.Variable(tf.random_uniform([512, n_out], minval=-.00001, maxval=.00001)),
-    }
+            'w1' : tf.Variable(tf.random_uniform([face_dim**2, 2048], minval=-.00001, maxval=.00001)),
+            'w2' : tf.Variable(tf.random_uniform([2048, 512], minval=-.00001, maxval=.00001)),
+            'out': tf.Variable(tf.random_uniform([512, n_out], minval=-.00001, maxval=.00001)),
+            }
 
     biases_d = {
-        'b1' : tf.Variable(tf.random_uniform([2048], minval=-.00001, maxval=.00001)),
-        'b2' : tf.Variable(tf.random_uniform([512], minval=-.00001, maxval=.00001)),
-        'out': tf.Variable(tf.random_uniform([n_out], minval=-.00001, maxval=.00001))
-    }
+            'b1' : tf.Variable(tf.random_uniform([2048], minval=-.00001, maxval=.00001)),
+            'b2' : tf.Variable(tf.random_uniform([512], minval=-.00001, maxval=.00001)),
+            'out': tf.Variable(tf.random_uniform([n_out], minval=-.00001, maxval=.00001))
+            }
 
     #create multilayer perceptron
-    pred = mlp(X, F, weights, biases, conv_drop, hidden_drop, face_dim)
-    #pred = mlp_dense(X, F, weights_d, biases_d, hidden_drop, face_dim)
+    #pred = mlp(X, F, weights, biases, conv_drop, hidden_drop, face_dim)
+    pred = mlp_dense(X, F, weights_d, biases_d, hidden_drop, face_dim)
 
     #define cost function
     #for now the cost function is the MSE
@@ -261,7 +270,9 @@ def main():
                 cv2.imshow('calibration', img)
                 cv2.waitKey(100)
 
-                calibrate(sess, train_op, cap, .1,n_input,X,Y,x/float(screen_width),y/float(screen_height))
+                x_tf = (float(x)/screen_width-.5)*2.
+                y_tf = (float(y)/screen_height-.5)*2.
+                calibrate(sess, train_op, .5, cap, alib, face_dim, X, Y, F, x_tf, y_tf)
         """
         #Lets see if it can figure out a dot....
         x = screen_width/4
@@ -278,7 +289,16 @@ def main():
             x_tf = (float(x)/screen_width-.5)*2.
             y_tf = (float(y)/screen_height-.5)*2.
             calibrate(sess, train_op, .5, cap, alib, face_dim, X, Y, F, x_tf, y_tf, screen_width, screen_height, x, y, pred)
-            test(sess, pred, cap, alib, face_dim, X, F, float(screen_width), float(screen_height), x_tf, y_tf, x, y)
+            p_tf = test(sess, pred, cap, alib, face_dim, X, F, float(screen_width), float(screen_height), x_tf, y_tf, x, y)
+            if p_tf is not None:
+                p = np.multiply(np.array(p_tf)/2.+.5, np.array([screen_width, screen_height])).astype(int)
+
+                #draw
+                cv2.circle(img, (p[0][0], p[0][1]), 10, (255,0,0), -1)
+                cv2.imshow('Focus', img)
+                #Display the resulting frame
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
 
         cv2.destroyWindow('calibration')
         print('Now continuing onto testing')
@@ -287,30 +307,24 @@ def main():
         img = np.zeros((screen_height, screen_width,3), np.uint8)
 
         while(True):
-            #Capture frame by frame
-            ret, frame = cap.read()
+            #generate the dot
+            x = randint(0,screen_width-1)#/screen_width
+            y = randint(0,screen_height-1)#/screen_height
+            x_tf = (float(x)/screen_width-.5)*2.
+            y_tf = (float(y)/screen_height-.5)*2.
 
-            # Operate on the frame
-            # We're not doing anything special so grayscale should be good enough
-            # Otherwise we'd just take the luminance values from the frame read
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            #attempt to perform the backprojection
+            p_tf = test(sess, pred, cap, alib, face_dim, X, F, float(screen_width), float(screen_height), x_tf, y_tf, x, y)
+            if p_tf is not None:
+                p = np.multiply(np.array(p_tf)/2.+.5, np.array([screen_width, screen_height])).astype(int)
 
-            #cut off the left and right sides (cause wide screen is stupid)
-            gray_rs = np.reshape(gray,(1,n_input))
-
-            feed_dict = {X: gray_rs/255.}
-            p = sess.run(pred, feed_dict)
-            print p[0]
-
-            p_rnd = np.int32(p[0])
-
-            cv2.imshow('GrayFrame',gray)
-            img[:] = (0,0,0) # clear
-            cv2.circle(img, (p_rnd[0]*screen_width, p_rnd[1]*screen_height), 10, (255,255,255), -1)
-            cv2.imshow('Focus', img)
-            #Display the resulting frame
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+                #draw
+                img[:] = (0,0,0) # clear
+                cv2.circle(img, (p[0][0], p[0][1]), 10, (255,255,255), -1)
+                cv2.imshow('Focus', img)
+                #Display the resulting frame
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
         """
 
 if __name__ == '__main__':
